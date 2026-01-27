@@ -1,0 +1,10 @@
+# Backend dependencies
+flask
+flask-cors
+pymongo
+python-dotenv
+pyjwt
+bcrypt
+dnspython
+requests
+yt-dlp
