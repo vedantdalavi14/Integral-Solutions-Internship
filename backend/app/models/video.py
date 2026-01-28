@@ -57,6 +57,30 @@ class Video:
         return [cls._from_dict(v) for v in videos]
     
     @classmethod
+    def find_active_paginated(cls, page=1, limit=10):
+        """
+        Find active videos with pagination support.
+        
+        Args:
+            page: Page number (1-indexed)
+            limit: Number of items per page
+            
+        Returns:
+            tuple: (videos list, total count)
+        """
+        db = get_db()
+        skip = (page - 1) * limit
+        
+        # Get total count for pagination metadata
+        total = db[cls.collection_name].count_documents({'is_active': True})
+        
+        # Get paginated videos
+        cursor = db[cls.collection_name].find({'is_active': True}).skip(skip).limit(limit)
+        videos = [cls._from_dict(v) for v in cursor]
+        
+        return videos, total
+    
+    @classmethod
     def find_by_id(cls, video_id):
         """Find video by ID"""
         db = get_db()
@@ -88,18 +112,82 @@ class Video:
         if db[cls.collection_name].count_documents({}) == 0:
             videos = [
                 {
-                    'title': 'How Startups Fail',
-                    'description': 'Lessons from real founders about common startup pitfalls and how to avoid them.',
-                    'youtube_id': 'dQw4w9WgXcQ',
-                    'thumbnail_url': 'https://img.youtube.com/vi/dQw4w9WgXcQ/maxresdefault.jpg',
+                    'title': 'How to Start a Startup',
+                    'description': 'Sam Altman and Dustin Moskovitz share key insights on starting a successful startup.',
+                    'youtube_id': 'CBYhVcO4WgI',
+                    'thumbnail_url': 'https://img.youtube.com/vi/CBYhVcO4WgI/maxresdefault.jpg',
                     'is_active': True,
                     'created_at': datetime.utcnow()
                 },
                 {
-                    'title': 'Building Products Users Love',
-                    'description': 'Key principles for creating successful products that users cant live without.',
-                    'youtube_id': 'kYfNvmF0Bqw',
-                    'thumbnail_url': 'https://img.youtube.com/vi/kYfNvmF0Bqw/maxresdefault.jpg',
+                    'title': 'React Native Tutorial for Beginners',
+                    'description': 'Learn React Native from scratch and build mobile apps.',
+                    'youtube_id': '0-S5a0eXPoc',
+                    'thumbnail_url': 'https://img.youtube.com/vi/0-S5a0eXPoc/maxresdefault.jpg',
+                    'is_active': True,
+                    'created_at': datetime.utcnow()
+                },
+                {
+                    'title': 'Python Tutorial - Full Course',
+                    'description': 'Complete Python programming tutorial for beginners.',
+                    'youtube_id': '_uQrJ0TkZlc',
+                    'thumbnail_url': 'https://img.youtube.com/vi/_uQrJ0TkZlc/maxresdefault.jpg',
+                    'is_active': True,
+                    'created_at': datetime.utcnow()
+                },
+                {
+                    'title': 'MongoDB Tutorial for Beginners',
+                    'description': 'Learn MongoDB from basics to advanced concepts.',
+                    'youtube_id': 'ofme2o29ngU',
+                    'thumbnail_url': 'https://img.youtube.com/vi/ofme2o29ngU/maxresdefault.jpg',
+                    'is_active': True,
+                    'created_at': datetime.utcnow()
+                },
+                {
+                    'title': 'Flask Web Development Tutorial',
+                    'description': 'Build web applications with Python Flask framework.',
+                    'youtube_id': 'Z1RJmh_OqeA',
+                    'thumbnail_url': 'https://img.youtube.com/vi/Z1RJmh_OqeA/maxresdefault.jpg',
+                    'is_active': True,
+                    'created_at': datetime.utcnow()
+                },
+                {
+                    'title': 'JavaScript Full Course',
+                    'description': 'Master JavaScript from beginner to advanced level.',
+                    'youtube_id': 'PkZNo7MFNFg',
+                    'thumbnail_url': 'https://img.youtube.com/vi/PkZNo7MFNFg/maxresdefault.jpg',
+                    'is_active': True,
+                    'created_at': datetime.utcnow()
+                },
+                {
+                    'title': 'Docker Tutorial for Beginners',
+                    'description': 'Learn Docker containerization from scratch.',
+                    'youtube_id': 'fqMOX6JJhGo',
+                    'thumbnail_url': 'https://img.youtube.com/vi/fqMOX6JJhGo/maxresdefault.jpg',
+                    'is_active': True,
+                    'created_at': datetime.utcnow()
+                },
+                {
+                    'title': 'Git and GitHub for Beginners',
+                    'description': 'Complete guide to version control with Git.',
+                    'youtube_id': 'RGOj5yH7evk',
+                    'thumbnail_url': 'https://img.youtube.com/vi/RGOj5yH7evk/maxresdefault.jpg',
+                    'is_active': True,
+                    'created_at': datetime.utcnow()
+                },
+                {
+                    'title': 'Machine Learning Full Course',
+                    'description': 'Introduction to Machine Learning concepts and algorithms.',
+                    'youtube_id': 'Gv9_4yMHFhI',
+                    'thumbnail_url': 'https://img.youtube.com/vi/Gv9_4yMHFhI/maxresdefault.jpg',
+                    'is_active': True,
+                    'created_at': datetime.utcnow()
+                },
+                {
+                    'title': 'REST API Design Best Practices',
+                    'description': 'Learn how to design and build professional REST APIs.',
+                    'youtube_id': '-MTSQjw5DrM',
+                    'thumbnail_url': 'https://img.youtube.com/vi/-MTSQjw5DrM/maxresdefault.jpg',
                     'is_active': True,
                     'created_at': datetime.utcnow()
                 }

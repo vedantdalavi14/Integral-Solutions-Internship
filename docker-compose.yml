@@ -1,0 +1,39 @@
+# =============================================================================
+# DOCKER COMPOSE - VIDEO STREAMING APP
+# =============================================================================
+# Run locally: docker-compose up --build
+
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+    environment:
+      - MONGO_URI=${MONGO_URI:-mongodb+srv://user:pass@cluster.mongodb.net/video_app}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-super-secret-jwt-key}
+      - REFRESH_TOKEN_SECRET=${REFRESH_TOKEN_SECRET:-refresh-secret-key}
+      - PLAYBACK_TOKEN_SECRET=${PLAYBACK_TOKEN_SECRET:-playback-secret-key}
+      - INTERNAL_TOKEN_SECRET=${INTERNAL_TOKEN_SECRET:-internal-token-secret}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+# =============================================================================
+# USAGE
+# =============================================================================
+# 1. Create a .env file with your secrets:
+#    MONGO_URI=mongodb+srv://...
+#    JWT_SECRET_KEY=your-jwt-secret
+#    REFRESH_TOKEN_SECRET=your-refresh-secret
+#    PLAYBACK_TOKEN_SECRET=your-playback-secret
+#
+# 2. Run: docker-compose up --build
+#
+# 3. Access API at http://localhost:5000

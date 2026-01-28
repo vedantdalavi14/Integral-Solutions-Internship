@@ -1,10 +1,13 @@
 # Backend dependencies
 flask
 flask-cors
-pymongo
+flask-limiter
+pymongo[srv]
 python-dotenv
 pyjwt
 bcrypt
 dnspython
 requests
 yt-dlp
+gunicorn
+certifi

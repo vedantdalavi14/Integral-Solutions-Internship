@@ -26,6 +26,33 @@ def decode_access_token(token):
     except jwt.InvalidTokenError:
         return None
 
+
+def generate_refresh_token(user_id):
+    """
+    Generate JWT refresh token for token rotation.
+    Longer lived (7 days) than access tokens.
+    """
+    payload = {
+        'user_id': str(user_id),
+        'exp': datetime.utcnow() + timedelta(seconds=Config.REFRESH_TOKEN_EXPIRES),
+        'iat': datetime.utcnow(),
+        'type': 'refresh'
+    }
+    return jwt.encode(payload, Config.REFRESH_TOKEN_SECRET, algorithm='HS256')
+
+
+def decode_refresh_token(token):
+    """Decode and verify JWT refresh token"""
+    try:
+        payload = jwt.decode(token, Config.REFRESH_TOKEN_SECRET, algorithms=['HS256'])
+        if payload.get('type') != 'refresh':
+            return None
+        return payload
+    except jwt.ExpiredSignatureError:
+        return None
+    except jwt.InvalidTokenError:
+        return None
+
 def jwt_required(f):
     """Decorator to protect routes with JWT authentication"""
     @wraps(f)

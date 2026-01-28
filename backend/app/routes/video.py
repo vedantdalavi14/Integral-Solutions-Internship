@@ -1,15 +1,29 @@
+"""
+Video Routes
+
+Handles video dashboard, streaming, and playback token management.
+Uses yt-dlp to extract video URLs and proxies streams to hide YouTube.
+"""
+
 from flask import Blueprint, request, jsonify, Response, stream_with_context
 from app.models.video import Video
+from app.models.watch_history import WatchHistory
 from app.utils.jwt_utils import (
     jwt_required,
     generate_playback_token,
     decode_playback_token,
 )
+from app import get_logger
 import yt_dlp
 import requests
 import time
 
 video_bp = Blueprint('video', __name__)
+logger = get_logger()
+
+# =============================================================================
+# URL CACHING
+# =============================================================================
 
 # Cache for extracted video URLs (expires after 5 minutes)
 _url_cache = {}
@@ -31,15 +45,19 @@ def cache_url(youtube_id, url):
     _url_cache[youtube_id] = (url, time.time())
 
 
+# =============================================================================
+# VIDEO URL EXTRACTION
+# =============================================================================
+
 def extract_video_url(youtube_id):
     """
-    Extract direct video URL using yt-dlp
-    Returns a progressive MP4 URL for mobile streaming
+    Extract direct video URL using yt-dlp.
+    Returns a progressive MP4 URL for mobile streaming.
     """
     # Check cache first
     cached = get_cached_url(youtube_id)
     if cached:
-        print(f"✅ Using cached URL for {youtube_id}")
+        logger.debug(f"Using cached URL for {youtube_id}")
         return cached
     
     youtube_url = f"https://www.youtube.com/watch?v={youtube_id}"
@@ -55,7 +73,7 @@ def extract_video_url(youtube_id):
     }
     
     try:
-        print(f"🎬 Extracting video URL for {youtube_id}...")
+        logger.info(f"Extracting video URL for {youtube_id}")
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(youtube_url, download=False)
             video_url = info.get('url')
@@ -69,41 +87,48 @@ def extract_video_url(youtube_id):
                         f.get('vcodec', '').startswith('avc') and
                         'manifest' not in f.get('url', '').lower()):
                         video_url = f['url']
-                        print(f"✅ Found compatible format: {f.get('format_id')}")
+                        logger.debug(f"Found compatible format: {f.get('format_id')}")
                         break
             
             if video_url:
-                print(f"✅ Extracted URL for {youtube_id}")
+                logger.info(f"Extracted URL for {youtube_id}")
                 cache_url(youtube_id, video_url)
                 return video_url
             else:
-                print(f"❌ No compatible format found for {youtube_id}")
+                logger.error(f"No compatible format found for {youtube_id}")
     except Exception as e:
-        print(f"❌ Error extracting video URL: {e}")
+        logger.error(f"Error extracting video URL: {e}")
     
     return None
 
+
+# =============================================================================
+# ROUTES
+# =============================================================================
 
 @video_bp.route('/dashboard', methods=['GET'])
 @jwt_required
 def get_dashboard():
     """
-    Get dashboard with 2 active videos
+    Get dashboard with active videos (paginated).
     
     Headers:
     Authorization: Bearer <access_token>
     
+    Query Parameters:
+    - page: Page number (default: 1)
+    - limit: Items per page (default: 10, max: 50)
+    
     Response:
     {
-        "videos": [
-            {
-                "id": "...",
-                "title": "...",
-                "description": "...",
-                "thumbnail_url": "...",
-                "playback_token": "..."  // Short-lived token for streaming
-            }
-        ]
+        "videos": [...],
+        "pagination": {
+            "page": 1,
+            "limit": 10,
+            "total": 25,
+            "pages": 3,
+            "has_more": true
+        }
     }
     
     IMPORTANT: youtube_id is NEVER exposed to the client
@@ -111,8 +136,22 @@ def get_dashboard():
     # Seed data if needed
     Video.seed_data()
     
-    # Get 2 active videos
-    videos = Video.find_active(limit=2)
+    # Get pagination params
+    page = request.args.get('page', 1, type=int)
+    limit = request.args.get('limit', 10, type=int)
+    
+    # Validate params
+    page = max(1, page)  # Minimum page is 1
+    limit = min(max(1, limit), 50)  # Limit between 1 and 50
+    
+    # Get paginated videos
+    videos, total = Video.find_active_paginated(page=page, limit=limit)
+    
+    # Calculate pagination metadata
+    import math
+    total_pages = math.ceil(total / limit) if total > 0 else 1
+    
+    logger.debug(f"Dashboard request from user {request.user_id}: page {page}, {len(videos)} videos")
     
     # Build response with playback tokens
     video_list = []
@@ -121,21 +160,28 @@ def get_dashboard():
         video_list.append(video.to_public_dict(playback_token=playback_token))
     
     return jsonify({
-        'videos': video_list
+        'videos': video_list,
+        'pagination': {
+            'page': page,
+            'limit': limit,
+            'total': total,
+            'pages': total_pages,
+            'has_more': page < total_pages
+        }
     }), 200
 
 
 @video_bp.route('/video/<video_id>/stream', methods=['GET'])
 def get_stream(video_id):
     """
-    Proxy video stream to the client
+    Proxy video stream to the client.
     
     This endpoint:
     1. Verifies the playback token
     2. Extracts direct video URL using yt-dlp
     3. Proxies the video bytes to the client
     
-    The frontend uses expo-av Video component with native controls.
+    The frontend uses expo-video component with native controls.
     This proxy hides YouTube completely and bypasses IP restrictions.
     
     Query Parameters:
@@ -149,10 +195,12 @@ def get_stream(video_id):
     # Decode and verify playback token
     payload = decode_playback_token(playback_token)
     if not payload:
+        logger.warning(f"Invalid playback token for video {video_id}")
         return jsonify({'error': 'Invalid or expired playback token'}), 401
     
     # Verify video_id matches token
     if payload.get('video_id') != video_id:
+        logger.warning(f"Token mismatch for video {video_id}")
         return jsonify({'error': 'Token does not match video'}), 403
     
     # Find video to get youtube_id
@@ -164,6 +212,7 @@ def get_stream(video_id):
     video_url = extract_video_url(video.youtube_id)
     
     if not video_url:
+        logger.error(f"Failed to extract stream for video {video_id}")
         return jsonify({'error': 'Failed to extract video stream'}), 500
     
     # Handle Range requests for seeking
@@ -206,7 +255,7 @@ def get_stream(video_id):
         )
         
     except Exception as e:
-        print(f"❌ Streaming error: {e}")
+        logger.error(f"Streaming error for video {video_id}: {e}")
         return jsonify({'error': 'Streaming failed'}), 500
 
 
@@ -214,9 +263,8 @@ def get_stream(video_id):
 @jwt_required
 def get_video_info(video_id):
     """
-    Get video information (for displaying before playing)
-    
-    Response includes a fresh playback token
+    Get video information (for displaying before playing).
+    Response includes a fresh playback token.
     """
     video = Video.find_by_id(video_id)
     if not video:
@@ -227,3 +275,106 @@ def get_video_info(video_id):
     return jsonify({
         'video': video.to_public_dict(playback_token=playback_token)
     }), 200
+
+
+@video_bp.route('/video/<video_id>/watch', methods=['POST'])
+@jwt_required
+def track_watch(video_id):
+    """
+    Track video watch progress.
+    
+    Request Body:
+    {
+        "duration": 120,      // Seconds watched
+        "completed": false    // Whether video was completed
+    }
+    
+    Response:
+    {
+        "message": "Watch tracked",
+        "stats": {
+            "view_count": 10,
+            "total_watch_time": 3600,
+            "completion_count": 5
+        }
+    }
+    """
+    # Verify video exists
+    video = Video.find_by_id(video_id)
+    if not video:
+        return jsonify({'error': 'Video not found'}), 404
+    
+    data = request.get_json() or {}
+    duration = data.get('duration', 0)
+    completed = data.get('completed', False)
+    
+    # Update or create watch history
+    WatchHistory.update_or_create(
+        user_id=request.user_id,
+        video_id=video_id,
+        watch_duration=duration,
+        completed=completed
+    )
+    
+    logger.info(f"Watch tracked: user {request.user_id}, video {video_id}, duration {duration}s")
+    
+    # Return updated stats
+    stats = WatchHistory.get_video_stats(video_id)
+    
+    return jsonify({
+        'message': 'Watch tracked',
+        'stats': stats
+    }), 200
+
+
+@video_bp.route('/video/<video_id>/stats', methods=['GET'])
+@jwt_required
+def get_video_stats(video_id):
+    """
+    Get watch statistics for a video.
+    
+    Response:
+    {
+        "stats": {
+            "view_count": 10,
+            "total_watch_time": 3600,
+            "completion_count": 5
+        }
+    }
+    """
+    video = Video.find_by_id(video_id)
+    if not video:
+        return jsonify({'error': 'Video not found'}), 404
+    
+    stats = WatchHistory.get_video_stats(video_id)
+    
+    return jsonify({'stats': stats}), 200
+
+
+@video_bp.route('/admin/reseed', methods=['POST'])
+def reseed_videos():
+    """
+    Admin endpoint to force reseed the videos database.
+    Clears existing videos and adds 10 sample videos.
+    
+    WARNING: This is for demo/testing only! Remove in production.
+    """
+    from app import get_db
+    db = get_db()
+    
+    # Clear existing videos
+    db.videos.delete_many({})
+    logger.info("Cleared existing videos")
+    
+    # Force reseed
+    Video.seed_data()
+    
+    # Get new count
+    count = db.videos.count_documents({})
+    logger.info(f"Reseeded {count} videos")
+    
+    return jsonify({
+        'message': f'Database reseeded with {count} videos',
+        'count': count
+    }), 200
+

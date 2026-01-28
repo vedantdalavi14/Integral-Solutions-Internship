@@ -1,0 +1,39 @@
+# =============================================================================
+# RENDER.COM DEPLOYMENT CONFIGURATION
+# =============================================================================
+# Deploy to Render.com for free hosting
+# 
+# Steps:
+# 1. Push your code to GitHub
+# 2. Create a new Web Service on Render.com
+# 3. Connect your GitHub repository
+# 4. Render will auto-detect this render.yaml
+# 5. Add environment variables in Render dashboard:
+#    - MONGO_URI
+#    - JWT_SECRET_KEY
+#    - REFRESH_TOKEN_SECRET
+#    - PLAYBACK_TOKEN_SECRET
+#    - INTERNAL_TOKEN_SECRET
+
+services:
+  - type: web
+    name: video-streaming-api
+    env: python
+    region: oregon
+    plan: free
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: cd backend && gunicorn --bind 0.0.0.0:$PORT --workers 2 --timeout 120 run:app
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: MONGO_URI
+        sync: false
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: REFRESH_TOKEN_SECRET
+        generateValue: true
+      - key: PLAYBACK_TOKEN_SECRET
+        generateValue: true
+      - key: INTERNAL_TOKEN_SECRET
+        generateValue: true

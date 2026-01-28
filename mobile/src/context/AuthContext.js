@@ -43,19 +43,23 @@ export function AuthProvider({ children }) {
 
     /**
      * Check if user is already authenticated (has valid token)
+     * Also loads refresh token for automatic token refresh on expiry
      */
     const checkAuthStatus = async () => {
         try {
             const token = await ApiService.getToken();
+            await ApiService.getRefreshToken(); // Load refresh token into memory
+
             if (token) {
                 // Verify token by fetching profile
+                // If token is expired, ApiService will auto-refresh
                 const data = await ApiService.getProfile();
                 setUser(data.user);
                 setIsAuthenticated(true);
             }
         } catch (error) {
             console.log('Not authenticated:', error.message);
-            await ApiService.removeToken();
+            await ApiService.removeTokens();
             setUser(null);
             setIsAuthenticated(false);
         } finally {
