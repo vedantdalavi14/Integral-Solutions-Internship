@@ -36,10 +36,11 @@ export default function VideoPlayerScreen({ route, navigation }) {
     const [currentPosition, setCurrentPosition] = useState(0);
     const [videoDuration, setVideoDuration] = useState(0);
 
-    // Refs for tracking
+    // Refs for tracking (use refs for values needed in cleanup)
     const startTimeRef = useRef(Date.now());
     const hasTrackedRef = useRef(false);
-    const lastSavedPositionRef = useRef(0);
+    const currentPositionRef = useRef(0);
+    const videoDurationRef = useRef(0);
 
     // Get proxied stream URL from backend
     const streamUrl = ApiService.getStreamUrl(video.id, video.playback_token);
@@ -78,15 +79,17 @@ export default function VideoPlayerScreen({ route, navigation }) {
     }, [video.id]);
 
     /**
-     * Track current position periodically
+     * Track current position periodically (update both state and refs)
      */
     useEffect(() => {
         const interval = setInterval(() => {
             if (player.currentTime !== undefined) {
                 setCurrentPosition(player.currentTime);
+                currentPositionRef.current = player.currentTime; // Keep ref updated
             }
             if (player.duration !== undefined && player.duration > 0) {
                 setVideoDuration(player.duration);
+                videoDurationRef.current = player.duration; // Keep ref updated
             }
         }, 1000);
 
@@ -94,22 +97,26 @@ export default function VideoPlayerScreen({ route, navigation }) {
     }, [player]);
 
     /**
-     * Save watch progress when leaving screen
+     * Save watch progress when leaving screen (uses refs for latest values)
      */
     const saveProgress = async () => {
         if (hasTrackedRef.current) return;
         hasTrackedRef.current = true;
 
+        // Use refs to get the ACTUAL current values (not stale closure values)
+        const pos = currentPositionRef.current;
+        const dur = videoDurationRef.current;
+
         const sessionDuration = Math.floor((Date.now() - startTimeRef.current) / 1000);
-        const completed = videoDuration > 0 && currentPosition >= videoDuration * 0.9;
+        const completed = dur > 0 && pos >= dur * 0.9;
 
         try {
-            console.log(`Saving progress: position ${Math.floor(currentPosition)}s / ${Math.floor(videoDuration)}s`);
+            console.log(`Saving progress: position ${Math.floor(pos)}s / ${Math.floor(dur)}s`);
             await ApiService.trackWatch(
                 video.id,
-                Math.floor(currentPosition),
+                Math.floor(pos),
                 sessionDuration,
-                Math.floor(videoDuration),
+                Math.floor(dur),
                 completed
             );
             console.log('Progress saved!');
@@ -118,7 +125,7 @@ export default function VideoPlayerScreen({ route, navigation }) {
         }
     };
 
-    // Save progress on screen unmount
+    // Save progress ONLY on actual screen unmount (not on state changes)
     useEffect(() => {
         const unsubscribe = navigation.addListener('beforeRemove', () => {
             saveProgress();
@@ -126,20 +133,35 @@ export default function VideoPlayerScreen({ route, navigation }) {
 
         return () => {
             unsubscribe();
+            // Only save on true unmount - refs will have latest values
             saveProgress();
         };
-    }, [navigation, video.id, currentPosition, videoDuration]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [navigation, video.id]); // Intentionally exclude state - we use refs
 
     /**
      * Calculate progress percentages
+     * Use videoDuration from player OR from saved progress (whichever is available)
      */
-    const previousWatchPercent = progress?.last_position && videoDuration > 0
-        ? Math.min((progress.last_position / videoDuration) * 100, 100)
+    const effectiveDuration = videoDuration > 0 ? videoDuration : (progress?.video_duration || 0);
+
+    const previousWatchPercent = progress?.last_position && effectiveDuration > 0
+        ? Math.min((progress.last_position / effectiveDuration) * 100, 100)
         : 0;
 
-    const currentWatchPercent = videoDuration > 0
-        ? Math.min((currentPosition / videoDuration) * 100, 100)
+    const currentWatchPercent = effectiveDuration > 0
+        ? Math.min((currentPosition / effectiveDuration) * 100, 100)
         : 0;
+
+    // Debug logging
+    console.log('Progress Debug:', {
+        lastPosition: progress?.last_position,
+        videoDuration: videoDuration,
+        progressVideoDuration: progress?.video_duration,
+        effectiveDuration: effectiveDuration,
+        previousWatchPercent: previousWatchPercent,
+        currentWatchPercent: currentWatchPercent
+    });
 
     // Error state
     if (error) {
@@ -167,7 +189,7 @@ export default function VideoPlayerScreen({ route, navigation }) {
                 {/* Background */}
                 <View style={styles.progressBarBg} />
 
-                {/* Yellow bar - Previously watched portion */}
+                {/* Yellow bar - Previously watched portion (shows full extent) */}
                 {previousWatchPercent > 0 && (
                     <View
                         style={[
@@ -177,7 +199,7 @@ export default function VideoPlayerScreen({ route, navigation }) {
                     />
                 )}
 
-                {/* Purple bar - Current position */}
+                {/* Purple bar - Current position (overlays on top) */}
                 <View
                     style={[
                         styles.progressBarCurrent,
@@ -185,11 +207,14 @@ export default function VideoPlayerScreen({ route, navigation }) {
                     ]}
                 />
 
-                {/* Position indicator */}
-                {previousWatchPercent > 0 && currentWatchPercent < previousWatchPercent && (
-                    <View style={[styles.resumeMarker, { left: `${previousWatchPercent}%` }]}>
-                        <Text style={styles.resumeText}>▼</Text>
-                    </View>
+                {/* Yellow marker at previously watched position */}
+                {previousWatchPercent > 0 && previousWatchPercent > currentWatchPercent && (
+                    <View
+                        style={[
+                            styles.previousMarker,
+                            { left: `${previousWatchPercent}%` }
+                        ]}
+                    />
                 )}
             </View>
 
@@ -276,11 +301,11 @@ const styles = StyleSheet.create({
     },
     // Progress Bar Styles
     progressBarContainer: {
-        height: 8,
+        height: 12,
         backgroundColor: '#2d2d44',
         marginHorizontal: 16,
-        borderRadius: 4,
-        overflow: 'hidden',
+        borderRadius: 6,
+        overflow: 'visible',
         position: 'relative',
     },
     progressBarBg: {
@@ -290,6 +315,7 @@ const styles = StyleSheet.create({
         right: 0,
         bottom: 0,
         backgroundColor: '#2d2d44',
+        borderRadius: 6,
     },
     progressBarPrevious: {
         position: 'absolute',
@@ -297,7 +323,8 @@ const styles = StyleSheet.create({
         left: 0,
         bottom: 0,
         backgroundColor: '#FFD700', // Yellow for previously watched
-        opacity: 0.6,
+        borderRadius: 6,
+        zIndex: 1,
     },
     progressBarCurrent: {
         position: 'absolute',
@@ -305,6 +332,18 @@ const styles = StyleSheet.create({
         left: 0,
         bottom: 0,
         backgroundColor: '#6c63ff', // Purple for current
+        borderRadius: 6,
+        zIndex: 2,
+    },
+    previousMarker: {
+        position: 'absolute',
+        top: -4,
+        bottom: -4,
+        width: 4,
+        backgroundColor: '#FFD700',
+        borderRadius: 2,
+        marginLeft: -2,
+        zIndex: 3,
     },
     resumeMarker: {
         position: 'absolute',
