@@ -59,43 +59,40 @@ def extract_video_url(youtube_id):
     if cached:
         logger.debug(f"Using cached URL for {youtube_id}")
         return cached
-    
-    youtube_url = f"https://www.youtube.com/watch?v={youtube_id}"
-    
-    # Request progressive MP4 formats that work on mobile
-    # Avoid DASH/HLS which require special handling
-    ydl_opts = {
-        'format': 'best[ext=mp4][vcodec^=avc][protocol!=m3u8_native][protocol!=m3u8]/best[ext=mp4]/best',
-        'quiet': True,
-        'no_warnings': True,
-        'extract_flat': False,
-        'socket_timeout': 30,
-    }
-    
+
+    logger.info(f"Extracting video URL for {youtube_id}")
+
     try:
-        logger.info(f"Extracting video URL for {youtube_id}")
+        # Options to minimalize blocking risk
+        ydl_opts = {
+            'format': 'best[ext=mp4]/best',
+            'quiet': True,
+            'no_warnings': True,
+            'noplaylist': True,
+            # Use Android client to mimic mobile app
+            'extractor_args': {'youtube': {'player_client': ['android']}},
+            'socket_timeout': 10,
+        }
+
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(youtube_url, download=False)
+            # Get video info
+            url = f"https://www.youtube.com/watch?v={youtube_id}"
+            info = ydl.extract_info(url, download=False)
+            
+            # Get direct URL
             video_url = info.get('url')
             
-            if not video_url:
-                # Try to get from formats - look for progressive MP4
-                formats = info.get('formats', [])
-                for f in reversed(formats):
-                    if (f.get('ext') == 'mp4' and 
-                        f.get('url') and 
-                        f.get('vcodec', '').startswith('avc') and
-            info = ydl.extract_info(youtube_id, download=False)
-            url = info['url']
-            cache_url(youtube_id, url)
-            return url
+            if video_url:
+                cache_url(youtube_id, video_url)
+                return video_url
+            else:
+                logger.warning(f"No direct URL found for {youtube_id}")
+                raise Exception("No direct URL found")
 
     except Exception as e:
         logger.error(f"Error extracting video URL: {str(e)}")
         
         # FALLBACK FOR CLOUD DEPLOYMENTS (Render/Heroku/AWS)
-        # YouTube often blocks data center IPs. To ensure the app remains functional
-        # for the assignment/demo, we return a copyright-free sample video.
         logger.warning(f"Using FALLBACK video for {youtube_id} due to extraction failure")
         return "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
 
