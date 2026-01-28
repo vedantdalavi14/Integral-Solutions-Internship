@@ -2,7 +2,7 @@
 
 A full-stack video streaming application built with **React Native (Expo)** and **Flask**.
 
-> 📱 **Demo APK**: [Download APK](#) *(coming soon)*  
+> 📱 **Demo APK**: [Download Android APK](https://expo.dev/accounts/vedantdalavi141204/projects/mobile/builds/a193146a-7ace-4157-b6e0-eb69fcdd0846)  
 > 🌐 **Live Backend**: [https://integral-solutions-internship.onrender.com](https://integral-solutions-internship.onrender.com)  
 > 📂 **GitHub**: [https://github.com/vedantdalavi14/Integral-Solutions-Internship](https://github.com/vedantdalavi14/Integral-Solutions-Internship)
 
