@@ -305,26 +305,55 @@ def track_watch(video_id):
         return jsonify({'error': 'Video not found'}), 404
     
     data = request.get_json() or {}
-    duration = data.get('duration', 0)
+    last_position = data.get('last_position', 0)  # Current playback position
+    duration = data.get('duration', 0)  # Session watch duration
+    video_duration = data.get('video_duration', 0)  # Total video length
     completed = data.get('completed', False)
     
-    # Update or create watch history
-    WatchHistory.update_or_create(
+    # Update or create watch history with position
+    result = WatchHistory.update_or_create(
         user_id=request.user_id,
         video_id=video_id,
+        last_position=last_position,
         watch_duration=duration,
+        video_duration=video_duration,
         completed=completed
     )
     
-    logger.info(f"Watch tracked: user {request.user_id}, video {video_id}, duration {duration}s")
+    logger.info(f"Watch tracked: user {request.user_id}, video {video_id}, position {last_position}s")
     
-    # Return updated stats
-    stats = WatchHistory.get_video_stats(video_id)
+    # Return user's progress for this video
+    progress = WatchHistory.get_user_progress(request.user_id, video_id)
     
     return jsonify({
         'message': 'Watch tracked',
-        'stats': stats
+        'progress': progress
     }), 200
+
+
+@video_bp.route('/video/<video_id>/progress', methods=['GET'])
+@jwt_required
+def get_video_progress(video_id):
+    """
+    Get user's watch progress for a video (for "continue watching" feature).
+    
+    Response:
+    {
+        "progress": {
+            "last_position": 120,    // Seconds - where user left off
+            "video_duration": 600,   // Total video length
+            "progress_percent": 20,  // Percentage watched
+            "completed": false
+        }
+    }
+    """
+    video = Video.find_by_id(video_id)
+    if not video:
+        return jsonify({'error': 'Video not found'}), 404
+    
+    progress = WatchHistory.get_user_progress(request.user_id, video_id)
+    
+    return jsonify({'progress': progress}), 200
 
 
 @video_bp.route('/video/<video_id>/stats', methods=['GET'])

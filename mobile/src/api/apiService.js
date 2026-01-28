@@ -319,16 +319,32 @@ const ApiService = {
     },
 
     /**
-     * Track video watch progress
+     * Get user's watch progress for a video (for "continue watching")
      * @param {string} videoId - Video ID
-     * @param {number} duration - Seconds watched
-     * @param {boolean} completed - Whether video was completed
-     * @returns {Promise<Object>} Watch stats
+     * @returns {Promise<Object>} Progress data with last_position, progress_percent
      */
-    async trackWatch(videoId, duration, completed = false) {
+    async getProgress(videoId) {
+        return this.request(`/video/${videoId}/progress`);
+    },
+
+    /**
+     * Track video watch progress with position
+     * @param {string} videoId - Video ID
+     * @param {number} lastPosition - Current playback position in seconds
+     * @param {number} duration - Seconds watched in this session
+     * @param {number} videoDuration - Total video length in seconds
+     * @param {boolean} completed - Whether video was completed
+     * @returns {Promise<Object>} Updated progress
+     */
+    async trackWatch(videoId, lastPosition, duration, videoDuration, completed = false) {
         return this.request(`/video/${videoId}/watch`, {
             method: 'POST',
-            body: JSON.stringify({ duration, completed }),
+            body: JSON.stringify({
+                last_position: lastPosition,
+                duration: duration,
+                video_duration: videoDuration,
+                completed: completed
+            }),
         });
     },
 };

@@ -1,7 +1,7 @@
 """
 Watch History Model
 
-Tracks user video watch history for analytics and recommendations.
+Tracks user video watch history including position for "continue watching" feature.
 """
 
 from datetime import datetime
@@ -10,17 +10,19 @@ from app import get_db
 
 
 class WatchHistory:
-    """Model for tracking video watch history"""
+    """Model for tracking video watch history with position tracking"""
     
     collection_name = 'watch_history'
     
-    def __init__(self, user_id, video_id, watch_duration=0, completed=False, 
-                 _id=None, created_at=None, updated_at=None):
+    def __init__(self, user_id, video_id, last_position=0, watch_duration=0, 
+                 video_duration=0, completed=False, _id=None, created_at=None, updated_at=None):
         self._id = _id or ObjectId()
         self.user_id = user_id
         self.video_id = video_id
-        self.watch_duration = watch_duration  # seconds watched
-        self.completed = completed  # whether user finished the video
+        self.last_position = last_position  # Current position in seconds (where user left off)
+        self.watch_duration = watch_duration  # Total seconds watched
+        self.video_duration = video_duration  # Total video length in seconds
+        self.completed = completed  # Whether user finished the video
         self.created_at = created_at or datetime.utcnow()
         self.updated_at = updated_at or datetime.utcnow()
     
@@ -30,7 +32,9 @@ class WatchHistory:
             '_id': self._id,
             'user_id': self.user_id,
             'video_id': self.video_id,
+            'last_position': self.last_position,
             'watch_duration': self.watch_duration,
+            'video_duration': self.video_duration,
             'completed': self.completed,
             'created_at': self.created_at,
             'updated_at': self.updated_at
@@ -44,7 +48,8 @@ class WatchHistory:
         return result.inserted_id
     
     @classmethod
-    def update_or_create(cls, user_id, video_id, watch_duration, completed=False):
+    def update_or_create(cls, user_id, video_id, last_position=0, watch_duration=0, 
+                         video_duration=0, completed=False):
         """
         Update existing watch history or create new one.
         Uses upsert for atomic operation.
@@ -52,18 +57,32 @@ class WatchHistory:
         Args:
             user_id: User's ID (string)
             video_id: Video's ID (string)
-            watch_duration: Seconds watched
+            last_position: Current playback position in seconds
+            watch_duration: Total seconds watched in this session
+            video_duration: Total video length in seconds
             completed: Whether video was completed
             
         Returns:
-            WatchHistory instance
+            Updated/created document
         """
         db = get_db()
         
+        # Get existing record to accumulate watch_duration
+        existing = db[cls.collection_name].find_one({
+            'user_id': user_id, 
+            'video_id': video_id
+        })
+        
+        total_duration = watch_duration
+        if existing:
+            total_duration = existing.get('watch_duration', 0) + watch_duration
+        
         update_data = {
             '$set': {
-                'watch_duration': watch_duration,
-                'completed': completed,
+                'last_position': last_position,
+                'watch_duration': total_duration,
+                'video_duration': video_duration,
+                'completed': completed or (existing and existing.get('completed', False)),
                 'updated_at': datetime.utcnow()
             },
             '$setOnInsert': {
@@ -79,7 +98,46 @@ class WatchHistory:
             upsert=True
         )
         
-        return result
+        # Return the updated document
+        return db[cls.collection_name].find_one({
+            'user_id': user_id, 
+            'video_id': video_id
+        })
+    
+    @classmethod
+    def get_user_progress(cls, user_id, video_id):
+        """
+        Get user's watch progress for a specific video.
+        
+        Returns:
+            dict with last_position, watch_duration, completed, progress_percent
+        """
+        db = get_db()
+        record = db[cls.collection_name].find_one({
+            'user_id': user_id,
+            'video_id': video_id
+        })
+        
+        if record:
+            video_dur = record.get('video_duration', 0)
+            last_pos = record.get('last_position', 0)
+            progress_percent = (last_pos / video_dur * 100) if video_dur > 0 else 0
+            
+            return {
+                'last_position': last_pos,
+                'watch_duration': record.get('watch_duration', 0),
+                'video_duration': video_dur,
+                'completed': record.get('completed', False),
+                'progress_percent': round(progress_percent, 1)
+            }
+        
+        return {
+            'last_position': 0,
+            'watch_duration': 0,
+            'video_duration': 0,
+            'completed': False,
+            'progress_percent': 0
+        }
     
     @classmethod
     def get_user_history(cls, user_id, limit=20):
@@ -141,7 +199,9 @@ class WatchHistory:
         return cls(
             user_id=data['user_id'],
             video_id=data['video_id'],
+            last_position=data.get('last_position', 0),
             watch_duration=data.get('watch_duration', 0),
+            video_duration=data.get('video_duration', 0),
             completed=data.get('completed', False),
             _id=data['_id'],
             created_at=data.get('created_at'),
