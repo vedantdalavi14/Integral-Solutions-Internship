@@ -24,8 +24,9 @@ import * as SecureStore from 'expo-secure-store';
  * For Android Emulator: http://10.0.2.2:5000
  * For iOS Simulator: http://localhost:5000
  * For Physical Device: http://YOUR_IP:5000
+ * For Production: https://integral-solutions-internship.onrender.com
  */
-const API_BASE_URL = 'http://192.168.1.7:5000';
+const API_BASE_URL = 'https://integral-solutions-internship.onrender.com';
 
 // =============================================================================
 // API SERVICE
