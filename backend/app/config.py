@@ -4,11 +4,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class Config:
-    # MongoDB Atlas Connection
-    MONGO_URI = os.getenv(
-        'MONGO_URI',
-        'mongodb+srv://vedantdalavi14_db_user:TsBMzbIgioY0gVQo@cluster0.obxxlpy.mongodb.net/video_app?retryWrites=true&w=majority'
-    )
+    # MongoDB Atlas Connection (REQUIRED - set in environment variables)
+    MONGO_URI = os.getenv('MONGO_URI')
+    if not MONGO_URI:
+        # For local development, you can create a .env file with MONGO_URI
+        raise ValueError("MONGO_URI environment variable is required!")
     
     # JWT Configuration
     JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', 'super-secret-jwt-key-change-in-production')

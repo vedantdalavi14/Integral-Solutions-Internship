@@ -1,0 +1,60 @@
+# =============================================================================
+# GIT IGNORE - DO NOT COMMIT THESE FILES
+# =============================================================================
+
+# Environment variables (CRITICAL - contains secrets!)
+.env
+.env.local
+.env.production
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+.venv/
+.eggs/
+*.egg-info/
+dist/
+build/
+
+# Node.js (mobile app)
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Expo
+.expo/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Build outputs
+*.apk
+*.aab
+*.ipa
